@@ -1,6 +1,5 @@
 node_modules
 *.log
-*.json
 dist/*.js
 build
 test
