@@ -1,21 +1,20 @@
 var spawn = require('child_process').spawn; 
-var exec = require('child_process').exec; 
+var exec = require('child_process').execSync; 
 var fs = require("fs");
+var Promise = require('es6-promise').Promise;
 var redis = require("redis");
 var sub = redis.createClient(), pub = redis.createClient();
 var PORT = 30000;
-var PROXY_CHANNEL = 'crwaler:proxy';
+var proxy_handles = [];
+
 
 function createProxyList(list){
 
     for(var i = 0;i<list.length;i++){
-        (function(i){
-            createProxy(list[i][1],list[i][2],list[i][3],list[i][4],PORT+i,function(){
-                sub.publish(PROXY_CHANNEL,'127.0.0.1:' + (PORT+i))
-            })
-        })(i);
-        
+        proxy_handles.push(createProxy(list[i][1],list[i][2],list[i][3],list[i][4],PORT+i))
     }
+
+    return proxy_handles;
 
 }
 
@@ -32,38 +31,48 @@ function createProxy(s,p,k,m,l,callback){
     c.push('-l');
     c.push(l);
 
-    
-    var out = fs.openSync('./out.log', 'a');
-    var err = fs.openSync('./out.log', 'a');
-    var subprocess = spawn('ss-local', c, {
-        detached: true,
-        stdio: [ 'ignore', out, err ]
-      });
+    var promise = new Promise((resolve, reject) => {
 
-      subprocess.unref();
-      subprocess.on('error', (err) => {
-        console.log('Failed to start subprocess.');
+        var out = fs.openSync('./out.log', 'a');
+        var err = fs.openSync('./out.log', 'a');
+        var subprocess = spawn('ss-local', c, {
+            detached: true,
+            stdio: [ 'ignore', out, err ]
+          });
+          
+          subprocess.unref();
+          subprocess.on('error', (err) => {
+            console.log('Failed to start subprocess.');
+            resolve({
+                handle:subprocess,
+                uri:null
+            })
+          });
+          
+        //   subprocess.stdout.on('data', (data) => {
+        //     console.log(`stdout: proxy`);
+            
+        //   });
+        // todo 错误处理等
+        resolve({
+            handle:subprocess,
+            uri:s + ':' + l
+        })
+        
       });
-      subprocess.on('close', (code) => {
-        
-        console.log(`ps process exited with code ${code}`);
-        
-        
-      });
+    
+
+      return promise
 }
 
 function getFreeSS(){
     var cmd = 'curl https://free-ss.site/ss.php?_=' + +(new Date);
     var list = [];
-    exec(cmd, function(err,stdout,stderr){
-        if(err) {
-            console.log('get api error:'+stderr);
-        } else {
-            var data = JSON.parse(stdout);
-            list = data.data;
-            createProxyList(list)
-        }
-    });
+
+    var stdout = exec(cmd);
+    var data = JSON.parse(stdout);
+    list = data.data;
+    return createProxyList(list.slice(0,1));
 }
 
 module.exports = getFreeSS;
